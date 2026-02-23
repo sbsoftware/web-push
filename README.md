@@ -1,6 +1,12 @@
 # web-push
 
-TODO: Write a description here
+Lightweight Crystal models for generic Web Push request data.
+
+This shard currently includes:
+- `WebPush::Subscription`
+- `WebPush::Message`
+
+It does not include VAPID signing, payload encryption, or network delivery.
 
 ## Installation
 
@@ -20,11 +26,24 @@ TODO: Write a description here
 require "web-push"
 ```
 
-TODO: Write usage instructions here
+```crystal
+subscription = WebPush::Subscription.new(
+  endpoint: "https://push.example/send",
+  p256dh: "base64-p256dh",
+  auth: "base64-auth"
+)
+
+message = WebPush::Message.new(
+  payload: %({"title":"Hello"}),
+  ttl: 60
+)
+```
 
 ## Development
 
-TODO: Write development instructions here
+- Install dependencies: `shards install`
+- Run specs: `crystal spec`
+- Format code: `crystal tool format`
 
 ## Contributing
 
