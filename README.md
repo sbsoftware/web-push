@@ -7,8 +7,10 @@ This shard currently includes:
 - `WebPush::Message`
 - `WebPush::VapidConfig`
 - `WebPush::Vapid`
+- `WebPush::RequestBuilder`
+- `WebPush::Client` (no-payload push delivery)
 
-It does not include payload encryption or network delivery.
+It does not include payload encryption.
 
 ## Installation
 
