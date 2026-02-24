@@ -5,8 +5,10 @@ Lightweight Crystal models for generic Web Push request data.
 This shard currently includes:
 - `WebPush::Subscription`
 - `WebPush::Message`
+- `WebPush::VapidConfig`
+- `WebPush::Vapid`
 
-It does not include VAPID signing, payload encryption, or network delivery.
+It does not include payload encryption or network delivery.
 
 ## Installation
 
