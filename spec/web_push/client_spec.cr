@@ -37,7 +37,7 @@ private class StubClient < WebPush::Client
 end
 
 describe WebPush::Client do
-  describe "#send_no_payload" do
+  describe "#send" do
     it "sends a no-payload push request and maps 2xx responses as success" do
       now = Time.unix(1_710_000_000)
       endpoint = "http://127.0.0.1:19191/push"
@@ -46,7 +46,7 @@ describe WebPush::Client do
         WebPush::VapidConfig.new(public_key: CLIENT_TEST_PUBLIC_KEY, private_key: CLIENT_TEST_PRIVATE_KEY, subject: CLIENT_TEST_SUBJECT),
         stub
       )
-      result = client.send_no_payload(
+      result = client.send(
         WebPush::Subscription.new(endpoint: endpoint, p256dh: "p256dh-key", auth: "auth-key"),
         45,
         expires_at: now + 1.hour,
@@ -76,7 +76,7 @@ describe WebPush::Client do
       result = StubClient.new(
         WebPush::VapidConfig.new(public_key: CLIENT_TEST_PUBLIC_KEY, private_key: CLIENT_TEST_PRIVATE_KEY, subject: CLIENT_TEST_SUBJECT),
         stub
-      ).send_no_payload(
+      ).send(
         WebPush::Subscription.new(endpoint: "https://push.example/send", p256dh: "p256dh-key", auth: "auth-key"),
         30
       )
@@ -90,7 +90,7 @@ describe WebPush::Client do
       result = StubClient.new(
         WebPush::VapidConfig.new(public_key: CLIENT_TEST_PUBLIC_KEY, private_key: CLIENT_TEST_PRIVATE_KEY, subject: CLIENT_TEST_SUBJECT),
         stub
-      ).send_no_payload(
+      ).send(
         WebPush::Subscription.new(endpoint: "https://push.example/send", p256dh: "p256dh-key", auth: "auth-key"),
         30
       )
@@ -104,13 +104,25 @@ describe WebPush::Client do
       result = StubClient.new(
         WebPush::VapidConfig.new(public_key: CLIENT_TEST_PUBLIC_KEY, private_key: CLIENT_TEST_PRIVATE_KEY, subject: CLIENT_TEST_SUBJECT),
         stub
-      ).send_no_payload(
+      ).send(
         WebPush::Subscription.new(endpoint: "https://push.example/send", p256dh: "p256dh-key", auth: "auth-key"),
         30
       )
 
       result.state.should eq(WebPush::Client::SendState::Retryable)
       result.status_code.should eq(503)
+    end
+    it "raises when payload is provided" do
+      expect_raises(WebPush::ValidationError, "Encrypted payload is not supported") do
+        StubClient.new(
+          WebPush::VapidConfig.new(public_key: CLIENT_TEST_PUBLIC_KEY, private_key: CLIENT_TEST_PRIVATE_KEY, subject: CLIENT_TEST_SUBJECT),
+          StubPushEndpoint.new(201)
+        ).send(
+          WebPush::Subscription.new(endpoint: "https://push.example/send", p256dh: "p256dh-key", auth: "auth-key"),
+          30,
+          %({"title":"Hello"})
+        )
+      end
     end
   end
 end
