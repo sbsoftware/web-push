@@ -1,8 +1,6 @@
 require "http/client"
 
 module WebPush
-  alias RequestExecutor = Proc(String, String, HTTP::Headers, String, HTTP::Client::Response)
-
   class Client
     enum SendState
       Success
@@ -19,17 +17,17 @@ module WebPush
       end
     end
 
-    def initialize(@vapid_config : VapidConfig, @request_executor : RequestExecutor = Client.default_request_executor)
+    def initialize(@vapid_config : VapidConfig)
     end
 
     def send_no_payload(subscription : Subscription, ttl : Int32, *, expires_at : Time = Time.utc + Vapid::DEFAULT_EXPIRATION, now : Time = Time.utc) : SendResult
       request = RequestBuilder.no_payload_push(subscription, @vapid_config, ttl, expires_at: expires_at, now: now)
-      response = @request_executor.call("POST", request.endpoint, request.headers, request.body)
+      response = send_request(request)
       SendResult.new(state: map_state(response.status_code), status_code: response.status_code, body: response.body)
     end
 
-    private def self.default_request_executor : RequestExecutor
-      ->(method : String, endpoint : String, headers : HTTP::Headers, body : String) { HTTP::Client.exec(method, endpoint, headers, body) }
+    private def send_request(request : PushRequest) : HTTP::Client::Response
+      HTTP::Client.exec("POST", request.endpoint, request.headers, request.body)
     end
 
     private def map_state(status_code : Int32) : SendState

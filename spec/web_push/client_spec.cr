@@ -15,14 +15,24 @@ private struct CapturedPushRequest
 end
 
 private class StubPushEndpoint
-  getter request : CapturedPushRequest?
-
   def initialize(@status_code : Int32, @response_body : String = %({"status":"ok"}))
   end
 
-  def exec(method : String, endpoint : String, headers : HTTP::Headers, body : String) : HTTP::Client::Response
-    @request = CapturedPushRequest.new(method: method, endpoint: endpoint, headers: headers.dup, body: body)
+  def response : HTTP::Client::Response
     HTTP::Client::Response.new(@status_code, body: @response_body)
+  end
+end
+
+private class StubClient < WebPush::Client
+  getter request : CapturedPushRequest?
+
+  def initialize(vapid_config : WebPush::VapidConfig, @stub_push_endpoint : StubPushEndpoint)
+    super(vapid_config)
+  end
+
+  private def send_request(request : WebPush::PushRequest) : HTTP::Client::Response
+    @request = CapturedPushRequest.new(method: "POST", endpoint: request.endpoint, headers: request.headers.dup, body: request.body)
+    @stub_push_endpoint.response
   end
 end
 
@@ -32,16 +42,17 @@ describe WebPush::Client do
       now = Time.unix(1_710_000_000)
       endpoint = "http://127.0.0.1:19191/push"
       stub = StubPushEndpoint.new(201)
-      result = WebPush::Client.new(
+      client = StubClient.new(
         WebPush::VapidConfig.new(public_key: CLIENT_TEST_PUBLIC_KEY, private_key: CLIENT_TEST_PRIVATE_KEY, subject: CLIENT_TEST_SUBJECT),
-        ->(method : String, request_endpoint : String, headers : HTTP::Headers, body : String) { stub.exec(method, request_endpoint, headers, body) }
-      ).send_no_payload(
+        stub
+      )
+      result = client.send_no_payload(
         WebPush::Subscription.new(endpoint: endpoint, p256dh: "p256dh-key", auth: "auth-key"),
         45,
         expires_at: now + 1.hour,
         now: now
       )
-      request = stub.request.not_nil!
+      request = client.request.not_nil!
 
       request.method.should eq("POST")
       request.endpoint.should eq(endpoint)
@@ -62,9 +73,9 @@ describe WebPush::Client do
 
     it "maps 404 responses as invalid subscriptions" do
       stub = StubPushEndpoint.new(404)
-      result = WebPush::Client.new(
+      result = StubClient.new(
         WebPush::VapidConfig.new(public_key: CLIENT_TEST_PUBLIC_KEY, private_key: CLIENT_TEST_PRIVATE_KEY, subject: CLIENT_TEST_SUBJECT),
-        ->(method : String, request_endpoint : String, headers : HTTP::Headers, body : String) { stub.exec(method, request_endpoint, headers, body) }
+        stub
       ).send_no_payload(
         WebPush::Subscription.new(endpoint: "https://push.example/send", p256dh: "p256dh-key", auth: "auth-key"),
         30
@@ -76,9 +87,9 @@ describe WebPush::Client do
 
     it "maps 410 responses as invalid subscriptions" do
       stub = StubPushEndpoint.new(410)
-      result = WebPush::Client.new(
+      result = StubClient.new(
         WebPush::VapidConfig.new(public_key: CLIENT_TEST_PUBLIC_KEY, private_key: CLIENT_TEST_PRIVATE_KEY, subject: CLIENT_TEST_SUBJECT),
-        ->(method : String, request_endpoint : String, headers : HTTP::Headers, body : String) { stub.exec(method, request_endpoint, headers, body) }
+        stub
       ).send_no_payload(
         WebPush::Subscription.new(endpoint: "https://push.example/send", p256dh: "p256dh-key", auth: "auth-key"),
         30
@@ -90,9 +101,9 @@ describe WebPush::Client do
 
     it "maps non-2xx and non-subscription-invalid responses as retryable" do
       stub = StubPushEndpoint.new(503)
-      result = WebPush::Client.new(
+      result = StubClient.new(
         WebPush::VapidConfig.new(public_key: CLIENT_TEST_PUBLIC_KEY, private_key: CLIENT_TEST_PRIVATE_KEY, subject: CLIENT_TEST_SUBJECT),
-        ->(method : String, request_endpoint : String, headers : HTTP::Headers, body : String) { stub.exec(method, request_endpoint, headers, body) }
+        stub
       ).send_no_payload(
         WebPush::Subscription.new(endpoint: "https://push.example/send", p256dh: "p256dh-key", auth: "auth-key"),
         30
