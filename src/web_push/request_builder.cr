@@ -2,7 +2,9 @@ require "http/headers"
 
 module WebPush
   module RequestBuilder
-    def self.no_payload_push(subscription : Subscription, vapid_config : VapidConfig, ttl : Int32, *, expires_at : Time = Time.utc + Vapid::DEFAULT_EXPIRATION, now : Time = Time.utc) : PushRequest
+    def self.push(subscription : Subscription, vapid_config : VapidConfig, ttl : Int32, payload : String? = nil, *, expires_at : Time = Time.utc + Vapid::DEFAULT_EXPIRATION, now : Time = Time.utc) : PushRequest
+      # Payload encryption is a non-goal for this ticket; keep this argument to align the future API.
+      payload
       validate_ttl(ttl)
       vapid_headers = Vapid.auth_headers(vapid_config, subscription.endpoint, expires_at: expires_at, now: now)
 

@@ -5,10 +5,10 @@ private REQUEST_TEST_PRIVATE_KEY = "79Om5Okowk6Tkd-1moexy7bIXuQQb5o2J9SWPq75Wnw"
 private REQUEST_TEST_SUBJECT     = "mailto:admin@example.com"
 
 describe WebPush::RequestBuilder do
-  describe ".no_payload_push" do
+  describe ".push" do
     it "builds a no-payload request with TTL and VAPID auth headers" do
       now = Time.unix(1_710_000_000)
-      request = WebPush::RequestBuilder.no_payload_push(
+      request = WebPush::RequestBuilder.push(
         WebPush::Subscription.new(endpoint: "https://push.example/send/123", p256dh: "p256dh-key", auth: "auth-key"),
         WebPush::VapidConfig.new(public_key: REQUEST_TEST_PUBLIC_KEY, private_key: REQUEST_TEST_PRIVATE_KEY, subject: REQUEST_TEST_SUBJECT),
         30,
@@ -32,9 +32,20 @@ describe WebPush::RequestBuilder do
       claims["sub"].as_s.should eq(REQUEST_TEST_SUBJECT)
     end
 
+    it "ignores payload until encryption support exists" do
+      request = WebPush::RequestBuilder.push(
+        WebPush::Subscription.new(endpoint: "https://push.example/send/123", p256dh: "p256dh-key", auth: "auth-key"),
+        WebPush::VapidConfig.new(public_key: REQUEST_TEST_PUBLIC_KEY, private_key: REQUEST_TEST_PRIVATE_KEY, subject: REQUEST_TEST_SUBJECT),
+        30,
+        %({"title":"Hello"})
+      )
+
+      request.body.should eq("")
+    end
+
     it "raises for negative ttl values" do
       expect_raises(WebPush::ValidationError, "Push request field 'ttl' must be greater than or equal to 0") do
-        WebPush::RequestBuilder.no_payload_push(
+        WebPush::RequestBuilder.push(
           WebPush::Subscription.new(endpoint: "https://push.example/send/123", p256dh: "p256dh-key", auth: "auth-key"),
           WebPush::VapidConfig.new(public_key: REQUEST_TEST_PUBLIC_KEY, private_key: REQUEST_TEST_PRIVATE_KEY, subject: REQUEST_TEST_SUBJECT),
           -1
