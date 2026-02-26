@@ -10,7 +10,7 @@ This shard currently includes:
 - `WebPush::RequestBuilder`
 - `WebPush::Client` (`#send` currently supports no-payload delivery)
 
-It does not include payload encryption.
+`WebPush::RequestBuilder.push` includes RFC8291 payload encryption metadata/body assembly for payload-bearing requests.
 
 ## Installation
 
