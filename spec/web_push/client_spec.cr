@@ -51,8 +51,8 @@ describe WebPush::Client do
       )
       result = client.send(
         WebPush::Subscription.new(endpoint: endpoint, p256dh: CLIENT_TEST_P256DH, auth: CLIENT_TEST_AUTH),
-        45,
         CLIENT_TEST_PAYLOAD,
+        ttl: 45,
         expires_at: now + 1.hour,
         now: now
       )
@@ -85,8 +85,8 @@ describe WebPush::Client do
         stub
       ).send(
         WebPush::Subscription.new(endpoint: "https://push.example/send", p256dh: CLIENT_TEST_P256DH, auth: CLIENT_TEST_AUTH),
-        30,
-        CLIENT_TEST_PAYLOAD
+        CLIENT_TEST_PAYLOAD,
+        ttl: 30
       )
 
       result.state.should eq(WebPush::Client::SendState::InvalidSubscription)
@@ -100,8 +100,8 @@ describe WebPush::Client do
         stub
       ).send(
         WebPush::Subscription.new(endpoint: "https://push.example/send", p256dh: CLIENT_TEST_P256DH, auth: CLIENT_TEST_AUTH),
-        30,
-        CLIENT_TEST_PAYLOAD
+        CLIENT_TEST_PAYLOAD,
+        ttl: 30
       )
 
       result.state.should eq(WebPush::Client::SendState::InvalidSubscription)
@@ -115,25 +115,38 @@ describe WebPush::Client do
         stub
       ).send(
         WebPush::Subscription.new(endpoint: "https://push.example/send", p256dh: CLIENT_TEST_P256DH, auth: CLIENT_TEST_AUTH),
-        30,
-        CLIENT_TEST_PAYLOAD
+        CLIENT_TEST_PAYLOAD,
+        ttl: 30
       )
 
       result.state.should eq(WebPush::Client::SendState::Retryable)
       result.status_code.should eq(503)
     end
 
-    it "raises for empty payloads" do
-      expect_raises(WebPush::ValidationError, "Push encryption payload must not be empty") do
-        StubClient.new(
-          WebPush::VapidConfig.new(public_key: CLIENT_TEST_PUBLIC_KEY, private_key: CLIENT_TEST_PRIVATE_KEY, subject: CLIENT_TEST_SUBJECT),
-          StubPushEndpoint.new(201)
-        ).send(
-          WebPush::Subscription.new(endpoint: "https://push.example/send", p256dh: CLIENT_TEST_P256DH, auth: CLIENT_TEST_AUTH),
-          30,
-          ""
-        )
-      end
+    it "routes empty payloads to the no-payload push flow" do
+      now = Time.unix(1_710_000_000)
+      endpoint = "http://127.0.0.1:19191/push"
+      stub = StubPushEndpoint.new(201)
+      client = StubClient.new(
+        WebPush::VapidConfig.new(public_key: CLIENT_TEST_PUBLIC_KEY, private_key: CLIENT_TEST_PRIVATE_KEY, subject: CLIENT_TEST_SUBJECT),
+        stub
+      )
+      result = client.send(
+        WebPush::Subscription.new(endpoint: endpoint, p256dh: CLIENT_TEST_P256DH, auth: CLIENT_TEST_AUTH),
+        "",
+        ttl: 30,
+        expires_at: now + 1.hour,
+        now: now
+      )
+      request = client.request.not_nil!
+
+      request.body.should eq("")
+      request.headers["TTL"].should eq("30")
+      request.headers["Crypto-Key"].should eq("p256ecdsa=#{CLIENT_TEST_PUBLIC_KEY}")
+      request.headers.has_key?("Content-Encoding").should be_false
+
+      result.state.should eq(WebPush::Client::SendState::Success)
+      result.status_code.should eq(201)
     end
   end
 end
