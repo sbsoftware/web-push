@@ -20,9 +20,7 @@ module WebPush
     def initialize(@vapid_config : VapidConfig)
     end
 
-    def send(subscription : Subscription, ttl : Int32, payload : String? = nil, *, expires_at : Time = Time.utc + Vapid::DEFAULT_EXPIRATION, now : Time = Time.utc) : SendResult
-      raise ValidationError.new("Encrypted payload is not supported") if payload
-
+    def send(subscription : Subscription, ttl : Int32, payload : String, *, expires_at : Time = Time.utc + Vapid::DEFAULT_EXPIRATION, now : Time = Time.utc) : SendResult
       request = RequestBuilder.push(subscription, @vapid_config, ttl, payload, expires_at: expires_at, now: now)
       response = send_request(request)
       SendResult.new(state: map_state(response.status_code), status_code: response.status_code, body: response.body)

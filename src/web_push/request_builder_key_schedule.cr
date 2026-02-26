@@ -20,9 +20,11 @@ module WebPush
     private CONTENT_ENCRYPTION_KEY_INFO    = "Content-Encoding: aes128gcm\0".to_slice
     private NONCE_INFO                     = "Content-Encoding: nonce\0".to_slice
     private WEB_PUSH_INFO_PREFIX           = "WebPush: info\0".to_slice
+    private WEB_PUSH_CONTENT_ENCODING      = "aes128gcm"
     private AES_128_GCM                    = "aes-128-gcm"
     private EVP_CTRL_AEAD_SET_IVLEN        =  0x9
     private EVP_CTRL_AEAD_GET_TAG          = 0x10
+    private POINT_CONVERSION_UNCOMPRESSED  =    4
 
     private struct KeyMaterial
       getter content_encryption_key : Bytes
@@ -46,6 +48,48 @@ module WebPush
     private def self.encrypt_payload_body(subscription : Subscription, payload : String, sender_public_key : String, sender_private_key : String, salt : String, record_size : Int32 = DEFAULT_RECORD_SIZE) : Bytes
       raise ValidationError.new("Push encryption payload must not be empty") if payload.empty?
       frame_payload_records(payload.to_slice, derive_key_schedule(subscription, sender_public_key, sender_private_key, salt), decode_fixed_length_key("salt", salt, SALT_BYTES), decode_p256_public_key("sender_public_key", sender_public_key), record_size)
+    end
+
+    private def self.build_encrypted_push_request(subscription : Subscription, vapid_headers : Vapid::AuthHeaders, ttl : Int32, payload : String, sender_public_key : String, sender_private_key : String, salt : String) : PushRequest
+      PushRequest.new(
+        endpoint: subscription.endpoint,
+        headers: HTTP::Headers{
+          "TTL"              => ttl.to_s,
+          "Authorization"    => vapid_headers.authorization,
+          "Content-Encoding" => WEB_PUSH_CONTENT_ENCODING,
+          "Crypto-Key"       => encryption_crypto_key(vapid_headers.crypto_key, sender_public_key),
+        },
+        body: String.new(encrypt_payload_body(subscription, payload, sender_public_key, sender_private_key, salt))
+      )
+    end
+
+    private def self.encryption_crypto_key(vapid_crypto_key : String, sender_public_key : String) : String
+      # Payload encryption binds the ephemeral sender key via dh, while VAPID keeps p256ecdsa.
+      "dh=#{sender_public_key};#{vapid_crypto_key}"
+    end
+
+    private def self.generate_salt : String
+      Base64.urlsafe_encode(Random::Secure.random_bytes(SALT_BYTES), false)
+    end
+
+    private def self.generate_sender_key_pair : NamedTuple(public_key: String, private_key: String)
+      sender_key = Pointer(Void).null.as(LibCrypto::EC_KEY)
+      sender_key = LibCrypto.ec_key_new_by_curve_name(LibCrypto::NID_X9_62_prime256v1)
+      raise ValidationError.new("Failed to initialize sender P-256 keypair") if sender_key.null?
+      raise ValidationError.new("Failed to generate sender P-256 keypair") unless LibCrypto.ec_key_generate_key(sender_key) == 1
+      group = LibCrypto.ec_key_get0_group(sender_key)
+      raise ValidationError.new("Failed to access sender P-256 group") if group.null?
+      sender_public_point = LibCrypto.ec_key_get0_public_key(sender_key)
+      sender_private_bn = LibCrypto.ec_key_get0_private_key(sender_key)
+      raise ValidationError.new("Failed to read sender P-256 public key") if sender_public_point.null?
+      raise ValidationError.new("Failed to read sender P-256 private key") if sender_private_bn.null?
+      sender_public_key_bytes = Bytes.new(P256_UNCOMPRESSED_PUBLIC_BYTES)
+      raise ValidationError.new("Failed to encode sender P-256 public key") unless LibCrypto.ec_point_point2oct(group, sender_public_point, POINT_CONVERSION_UNCOMPRESSED, sender_public_key_bytes.to_unsafe, sender_public_key_bytes.size, Pointer(Void).null) == P256_UNCOMPRESSED_PUBLIC_BYTES.to_u64
+      sender_private_key_bytes = Bytes.new(P256_PRIVATE_KEY_BYTES)
+      raise ValidationError.new("Failed to encode sender P-256 private key") unless LibCrypto.bn_bn2binpad(sender_private_bn, sender_private_key_bytes.to_unsafe, sender_private_key_bytes.size) == P256_PRIVATE_KEY_BYTES
+      {public_key: Base64.urlsafe_encode(sender_public_key_bytes, false), private_key: Base64.urlsafe_encode(sender_private_key_bytes, false)}
+    ensure
+      LibCrypto.ec_key_free(sender_key) if sender_key && !sender_key.null?
     end
 
     private def self.frame_payload_records(payload : Bytes, key_material : KeyMaterial, salt : Bytes, sender_public_key : Bytes, record_size : Int32) : Bytes
@@ -219,4 +263,8 @@ end
 lib LibCrypto
   fun ecdh_compute_key = ECDH_compute_key(out : UInt8*, outlen : SizeT, pub_key : EC_POINT, ecdh : EC_KEY, kdf : Void*) : Int32
   fun evp_cipher_ctx_ctrl = EVP_CIPHER_CTX_ctrl(ctx : EVP_CIPHER_CTX, type : Int32, arg : Int32, ptr : Void*) : Int32
+  fun ec_key_generate_key = EC_KEY_generate_key(key : EC_KEY) : Int32
+  fun ec_key_get0_private_key = EC_KEY_get0_private_key(key : EC_KEY) : BIGNUM
+  fun ec_key_get0_public_key = EC_KEY_get0_public_key(key : EC_KEY) : EC_POINT
+  fun ec_point_point2oct = EC_POINT_point2oct(group : EC_GROUP, p : EC_POINT, form : Int32, buf : UInt8*, len : SizeT, ctx : Void*) : SizeT
 end

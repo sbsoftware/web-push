@@ -2,20 +2,11 @@ require "http/headers"
 
 module WebPush
   module RequestBuilder
-    def self.push(subscription : Subscription, vapid_config : VapidConfig, ttl : Int32, payload : String? = nil, *, expires_at : Time = Time.utc + Vapid::DEFAULT_EXPIRATION, now : Time = Time.utc) : PushRequest
-      # Payload encryption is a non-goal for this ticket; keep this argument to align the future API.
-      payload
+    def self.push(subscription : Subscription, vapid_config : VapidConfig, ttl : Int32, payload : String, *, expires_at : Time = Time.utc + Vapid::DEFAULT_EXPIRATION, now : Time = Time.utc) : PushRequest
       validate_ttl(ttl)
       vapid_headers = Vapid.auth_headers(vapid_config, subscription.endpoint, expires_at: expires_at, now: now)
-
-      PushRequest.new(
-        endpoint: subscription.endpoint,
-        headers: HTTP::Headers{
-          "TTL"           => ttl.to_s,
-          "Authorization" => vapid_headers.authorization,
-          "Crypto-Key"    => vapid_headers.crypto_key,
-        }
-      )
+      sender_key_pair = generate_sender_key_pair
+      build_encrypted_push_request(subscription, vapid_headers, ttl, payload, sender_key_pair[:public_key], sender_key_pair[:private_key], generate_salt)
     end
 
     private def self.validate_ttl(ttl : Int32)
