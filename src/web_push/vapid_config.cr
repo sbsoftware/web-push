@@ -1,6 +1,12 @@
 require "base64"
 
 module WebPush
+  # VAPID credentials used to authenticate Web Push requests.
+  #
+  # Required fields:
+  # - `public_key`: base64url, 65-byte uncompressed P-256 public key.
+  # - `private_key`: base64url, 32-byte P-256 private key.
+  # - `subject`: contact URI starting with `mailto:` or `https://`.
   struct VapidConfig
     getter public_key : String
     getter private_key : String
@@ -8,6 +14,10 @@ module WebPush
 
     private BASE64URL_PATTERN = /\A[A-Za-z0-9_-]+={0,2}\z/
 
+    # Creates a validated VAPID configuration.
+    #
+    # Raises `ValidationError` when fields are missing, malformed, or have
+    # invalid key lengths.
     def initialize(@public_key : String, @private_key : String, @subject : String)
       validate_required_field("public_key", @public_key)
       validate_required_field("private_key", @private_key)

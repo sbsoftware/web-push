@@ -1,7 +1,16 @@
 require "http/headers"
 
 module WebPush
+  # Assembles Web Push HTTP requests with VAPID headers and optional payload
+  # encryption (RFC8291).
   module RequestBuilder
+    # Builds a `PushRequest` for the given subscription.
+    #
+    # - `payload` omitted/empty: no-payload push.
+    # - `payload` present: encrypted `aes128gcm` body.
+    #
+    # Raises `ValidationError` when `ttl` is negative or when input key material
+    # cannot produce a valid request.
     def self.push(subscription : Subscription, vapid_config : VapidConfig, payload : String? = nil, *, ttl : Int32, expires_at : Time = Time.utc + Vapid::DEFAULT_EXPIRATION, now : Time = Time.utc) : PushRequest
       validate_ttl(ttl)
       vapid_headers = Vapid.auth_headers(vapid_config, subscription.endpoint, expires_at: expires_at, now: now)

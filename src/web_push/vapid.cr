@@ -4,6 +4,7 @@ require "json"
 require "uri"
 
 module WebPush
+  # VAPID JWT and header helpers for Web Push requests.
   module Vapid
     DEFAULT_EXPIRATION  = 12.hours
     MAX_EXPIRATION      = 24.hours
@@ -19,11 +20,19 @@ module WebPush
       end
     end
 
+    # Builds a signed VAPID JWT (`ES256`) for the given audience origin.
+    #
+    # Raises `ValidationError` when audience or expiration is invalid, or when
+    # key material/signing operations fail.
     def self.jwt(config : VapidConfig, audience : String, *, expires_at : Time = Time.utc + DEFAULT_EXPIRATION, now : Time = Time.utc) : String
       signing_input = "#{base64url_encode(jwt_header_json)}.#{base64url_encode(jwt_claims_json(validate_audience(audience), validate_expiration(expires_at, now), config.subject))}"
       "#{signing_input}.#{base64url_encode(sign_es256(signing_input, config.private_key, config.public_key))}"
     end
 
+    # Builds `Authorization` and `Crypto-Key` headers for a push endpoint.
+    #
+    # Raises `ValidationError` when endpoint parsing, expiration, or signing
+    # fails.
     def self.auth_headers(config : VapidConfig, endpoint : String, *, expires_at : Time = Time.utc + DEFAULT_EXPIRATION, now : Time = Time.utc) : AuthHeaders
       token = jwt(config, audience_from_endpoint(endpoint), expires_at: expires_at, now: now)
       AuthHeaders.new(
@@ -32,6 +41,9 @@ module WebPush
       )
     end
 
+    # Returns the Web Push audience origin (`scheme://host[:port]`) from endpoint.
+    #
+    # Raises `ValidationError` when endpoint is not a valid absolute URI.
     def self.audience_from_endpoint(endpoint : String) : String
       uri = URI.parse(endpoint)
       raise ValidationError.new("VAPID endpoint must include scheme and host") unless uri.scheme && uri.host

@@ -1,6 +1,7 @@
 require "http/headers"
 
 module WebPush
+  # Serialized HTTP request data ready to POST to a push endpoint.
   struct PushRequest
     getter endpoint : String
     getter headers : HTTP::Headers
