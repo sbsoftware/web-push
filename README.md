@@ -10,7 +10,7 @@ This shard currently includes:
 - `WebPush::RequestBuilder`
 - `WebPush::Client`
 
-`WebPush::RequestBuilder.push` includes RFC8291 payload encryption metadata/body assembly for payload-bearing requests.
+`WebPush::Client#send` and `WebPush::RequestBuilder.push` support both no-payload delivery and RFC8291 encrypted payload delivery.
 
 ## Installation
 
@@ -37,10 +37,19 @@ subscription = WebPush::Subscription.new(
   auth: "base64-auth"
 )
 
-message = WebPush::Message.new(
-  payload: %({"title":"Hello"}),
-  ttl: 60
+vapid_config = WebPush::VapidConfig.new(
+  public_key: "base64url-vapid-public",
+  private_key: "base64url-vapid-private",
+  subject: "mailto:admin@example.com"
 )
+
+client = WebPush::Client.new(vapid_config)
+
+# No-payload Web Push
+client.send(subscription, "", ttl: 60)
+
+# Encrypted payload Web Push
+client.send(subscription, %({"title":"Hello"}), ttl: 60)
 ```
 
 ## Development

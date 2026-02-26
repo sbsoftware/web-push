@@ -13,8 +13,8 @@ describe WebPush::RequestBuilder do
       request = WebPush::RequestBuilder.push(
         WebPush::Subscription.new(endpoint: "https://push.example/send/123", p256dh: REQUEST_TEST_P256DH, auth: REQUEST_TEST_AUTH),
         WebPush::VapidConfig.new(public_key: REQUEST_TEST_PUBLIC_KEY, private_key: REQUEST_TEST_PRIVATE_KEY, subject: REQUEST_TEST_SUBJECT),
-        30,
         %({"title":"Hello"}),
+        ttl: 30,
         expires_at: now + 1.hour,
         now: now
       )
@@ -38,13 +38,40 @@ describe WebPush::RequestBuilder do
       claims["sub"].as_s.should eq(REQUEST_TEST_SUBJECT)
     end
 
+    it "builds a no-payload request for an empty payload string" do
+      request = WebPush::RequestBuilder.push(
+        WebPush::Subscription.new(endpoint: "https://push.example/send/123", p256dh: REQUEST_TEST_P256DH, auth: REQUEST_TEST_AUTH),
+        WebPush::VapidConfig.new(public_key: REQUEST_TEST_PUBLIC_KEY, private_key: REQUEST_TEST_PRIVATE_KEY, subject: REQUEST_TEST_SUBJECT),
+        "",
+        ttl: 30
+      )
+
+      request.body.should eq("")
+      request.headers["TTL"].should eq("30")
+      request.headers["Crypto-Key"].should eq("p256ecdsa=#{REQUEST_TEST_PUBLIC_KEY}")
+      request.headers.has_key?("Content-Encoding").should be_false
+    end
+
+    it "builds a no-payload request when payload is omitted" do
+      request = WebPush::RequestBuilder.push(
+        WebPush::Subscription.new(endpoint: "https://push.example/send/123", p256dh: REQUEST_TEST_P256DH, auth: REQUEST_TEST_AUTH),
+        WebPush::VapidConfig.new(public_key: REQUEST_TEST_PUBLIC_KEY, private_key: REQUEST_TEST_PRIVATE_KEY, subject: REQUEST_TEST_SUBJECT),
+        ttl: 30
+      )
+
+      request.body.should eq("")
+      request.headers["TTL"].should eq("30")
+      request.headers["Crypto-Key"].should eq("p256ecdsa=#{REQUEST_TEST_PUBLIC_KEY}")
+      request.headers.has_key?("Content-Encoding").should be_false
+    end
+
     it "raises for negative ttl values" do
       expect_raises(WebPush::ValidationError, "Push request field 'ttl' must be greater than or equal to 0") do
         WebPush::RequestBuilder.push(
           WebPush::Subscription.new(endpoint: "https://push.example/send/123", p256dh: "p256dh-key", auth: "auth-key"),
           WebPush::VapidConfig.new(public_key: REQUEST_TEST_PUBLIC_KEY, private_key: REQUEST_TEST_PRIVATE_KEY, subject: REQUEST_TEST_SUBJECT),
-          -1,
-          %({"title":"Hello"})
+          %({"title":"Hello"}),
+          ttl: -1
         )
       end
     end
