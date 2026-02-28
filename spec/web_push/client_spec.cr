@@ -74,6 +74,9 @@ describe WebPush::Client do
       claims["aud"].as_s.should eq("http://127.0.0.1:19191")
 
       result.state.should eq(WebPush::Client::SendState::Success)
+      result.success?.should be_true
+      result.cleanup_subscription?.should be_false
+      result.retryable?.should be_false
       result.status_code.should eq(201)
       result.body.should eq(%({"status":"ok"}))
     end
@@ -90,6 +93,9 @@ describe WebPush::Client do
       )
 
       result.state.should eq(WebPush::Client::SendState::InvalidSubscription)
+      result.invalid_subscription?.should be_true
+      result.cleanup_subscription?.should be_true
+      result.retryable?.should be_false
       result.status_code.should eq(404)
     end
 
@@ -105,11 +111,14 @@ describe WebPush::Client do
       )
 
       result.state.should eq(WebPush::Client::SendState::InvalidSubscription)
+      result.invalid_subscription?.should be_true
+      result.cleanup_subscription?.should be_true
+      result.retryable?.should be_false
       result.status_code.should eq(410)
     end
 
-    it "maps non-2xx and non-subscription-invalid responses as retryable" do
-      stub = StubPushEndpoint.new(503)
+    it "maps provider throttling and outage statuses as temporary failures" do
+      stub = StubPushEndpoint.new(429)
       result = StubClient.new(
         WebPush::VapidConfig.new(public_key: CLIENT_TEST_PUBLIC_KEY, private_key: CLIENT_TEST_PRIVATE_KEY, subject: CLIENT_TEST_SUBJECT),
         stub
@@ -119,8 +128,45 @@ describe WebPush::Client do
         ttl: 30
       )
 
-      result.state.should eq(WebPush::Client::SendState::Retryable)
-      result.status_code.should eq(503)
+      result.state.should eq(WebPush::Client::SendState::TemporaryFailure)
+      result.temporary_failure?.should be_true
+      result.retryable?.should be_true
+      result.cleanup_subscription?.should be_false
+      result.status_code.should eq(429)
+    end
+
+    it "maps representative temporary failure status codes consistently" do
+      [408, 425, 429, 500, 503].each do |status_code|
+        result = StubClient.new(
+          WebPush::VapidConfig.new(public_key: CLIENT_TEST_PUBLIC_KEY, private_key: CLIENT_TEST_PRIVATE_KEY, subject: CLIENT_TEST_SUBJECT),
+          StubPushEndpoint.new(status_code)
+        ).send(
+          WebPush::Subscription.new(endpoint: "https://push.example/send", p256dh: CLIENT_TEST_P256DH, auth: CLIENT_TEST_AUTH),
+          CLIENT_TEST_PAYLOAD,
+          ttl: 30
+        )
+
+        result.state.should eq(WebPush::Client::SendState::TemporaryFailure)
+        result.temporary_failure?.should be_true
+        result.retryable?.should be_true
+      end
+    end
+
+    it "maps remaining non-2xx statuses as permanent failures" do
+      result = StubClient.new(
+        WebPush::VapidConfig.new(public_key: CLIENT_TEST_PUBLIC_KEY, private_key: CLIENT_TEST_PRIVATE_KEY, subject: CLIENT_TEST_SUBJECT),
+        StubPushEndpoint.new(400)
+      ).send(
+        WebPush::Subscription.new(endpoint: "https://push.example/send", p256dh: CLIENT_TEST_P256DH, auth: CLIENT_TEST_AUTH),
+        CLIENT_TEST_PAYLOAD,
+        ttl: 30
+      )
+
+      result.state.should eq(WebPush::Client::SendState::PermanentFailure)
+      result.permanent_failure?.should be_true
+      result.retryable?.should be_false
+      result.cleanup_subscription?.should be_false
+      result.status_code.should eq(400)
     end
 
     it "routes empty payloads to the no-payload push flow" do
@@ -146,6 +192,7 @@ describe WebPush::Client do
       request.headers.has_key?("Content-Encoding").should be_false
 
       result.state.should eq(WebPush::Client::SendState::Success)
+      result.success?.should be_true
       result.status_code.should eq(201)
     end
   end
