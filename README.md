@@ -66,8 +66,10 @@ when WebPush::Client::SendState::Success
   puts "Delivered (#{result.status_code})"
 when WebPush::Client::SendState::InvalidSubscription
   puts "Subscription expired or deleted, remove it from storage"
-when WebPush::Client::SendState::Retryable
+when WebPush::Client::SendState::TemporaryFailure
   puts "Retry later with backoff (status=#{result.status_code})"
+when WebPush::Client::SendState::PermanentFailure
+  puts "Request rejected permanently, inspect payload/auth/config (status=#{result.status_code})"
 end
 ```
 
@@ -88,10 +90,13 @@ client.send(subscription, "", ttl: 60)
   - `subject` starting with `mailto:` or `https://`.
 - `WebPush::Client#send` requires `ttl >= 0`.
 - Invalid input raises `WebPush::ValidationError`.
-- HTTP responses map to `WebPush::Client::SendResult` states:
+- HTTP responses map to `WebPush::Client::SendResult` states and helpers:
   - `Success` for `2xx`.
   - `InvalidSubscription` for `404` or `410`.
-  - `Retryable` for other non-`2xx` responses.
+  - `TemporaryFailure` for `408`, `425`, `429`, and `5xx` responses.
+  - `PermanentFailure` for remaining non-`2xx` responses.
+  - `cleanup_subscription?` returns `true` only for `InvalidSubscription`.
+  - `retryable?` returns `true` only for `TemporaryFailure`.
 - Transport failures (DNS/connect/timeouts/TLS) bubble up from `HTTP::Client.exec` as exceptions; handle them in your worker/job runner.
 
 ## Compatibility Matrix (Expectations)
@@ -110,8 +115,9 @@ This shard builds standards-compliant Web Push requests (VAPID + RFC8291 payload
 - Keep the VAPID public key stable for active subscriptions. Key rotation usually requires client re-subscription.
 - JWT expiration is constrained to `<= 24h` and defaults to `12h`; pass `expires_at` only when you need tighter control.
 - `ttl` is provider interpreted. Keep TTLs explicit and conservative for time-sensitive messages.
-- Remove subscriptions from your datastore when `SendResult.state` is `InvalidSubscription` (`404`/`410`).
-- For `Retryable` responses, use exponential backoff and provider-specific rate limiting safeguards.
+- Remove subscriptions from your datastore when `SendResult.cleanup_subscription?` is `true` (`404`/`410`).
+- For `TemporaryFailure` responses (`SendResult.retryable?`), use exponential backoff and provider-specific rate limiting safeguards.
+- Treat `PermanentFailure` responses as non-retryable request/config errors unless provider documentation says otherwise.
 - Provider payload limits vary. Keep payloads compact; send IDs and fetch richer content in-app when possible.
 - Production endpoints are HTTPS; validate and store subscription data exactly as provided by the browser.
 

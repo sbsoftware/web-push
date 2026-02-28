@@ -31,6 +31,7 @@ describe "README examples" do
     )
 
     result.state.should eq(WebPush::Client::SendState::Success)
+    result.success?.should be_true
     result.status_code.should eq(201)
     result.body.should eq(%({"status":"ok"}))
   end
@@ -43,6 +44,7 @@ describe "README examples" do
     no_payload_result = no_payload_client.send(WebPush::Subscription.from_json(README_TEST_SUBSCRIPTION_JSON), "", ttl: 60)
 
     no_payload_result.state.should eq(WebPush::Client::SendState::Success)
+    no_payload_result.success?.should be_true
     no_payload_client.last_request.not_nil!.body.should eq("")
     no_payload_client.last_request.not_nil!.headers.has_key?("Content-Encoding").should be_false
 
@@ -52,6 +54,25 @@ describe "README examples" do
     ).send(WebPush::Subscription.from_json(README_TEST_SUBSCRIPTION_JSON), %({"title":"Hello"}), ttl: 60)
 
     invalid_subscription_result.state.should eq(WebPush::Client::SendState::InvalidSubscription)
+    invalid_subscription_result.cleanup_subscription?.should be_true
     invalid_subscription_result.status_code.should eq(410)
+  end
+
+  it "surfaces temporary and permanent failure categories" do
+    temporary_failure_result = ReadmeStubClient.new(
+      WebPush::VapidConfig.new(public_key: README_TEST_PUBLIC_KEY, private_key: README_TEST_PRIVATE_KEY, subject: "mailto:admin@example.com"),
+      503
+    ).send(WebPush::Subscription.from_json(README_TEST_SUBSCRIPTION_JSON), %({"title":"Hello"}), ttl: 60)
+
+    temporary_failure_result.state.should eq(WebPush::Client::SendState::TemporaryFailure)
+    temporary_failure_result.retryable?.should be_true
+
+    permanent_failure_result = ReadmeStubClient.new(
+      WebPush::VapidConfig.new(public_key: README_TEST_PUBLIC_KEY, private_key: README_TEST_PRIVATE_KEY, subject: "mailto:admin@example.com"),
+      400
+    ).send(WebPush::Subscription.from_json(README_TEST_SUBSCRIPTION_JSON), %({"title":"Hello"}), ttl: 60)
+
+    permanent_failure_result.state.should eq(WebPush::Client::SendState::PermanentFailure)
+    permanent_failure_result.retryable?.should be_false
   end
 end
