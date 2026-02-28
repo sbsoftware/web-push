@@ -1,21 +1,35 @@
 require "json"
 
 module WebPush
+  # Validated message payload and TTL metadata.
+  #
+  # `payload` must be non-empty and `ttl` must be `>= 0`.
   struct Message
     getter payload : String
     getter ttl : Int32
 
+    # Creates a message from direct values.
+    #
+    # Raises `ValidationError` if `payload` is blank or `ttl` is negative.
     def initialize(@payload : String, @ttl : Int32)
       validate_payload(payload)
       validate_ttl(ttl)
     end
 
+    # Parses a message from JSON text.
+    #
+    # Raises `ValidationError` for parse failures, missing fields, invalid types,
+    # blank payloads, or negative TTL values.
     def self.from_json(input : String) : self
       from_json(JSON.parse(input))
     rescue ex : JSON::ParseException
       raise ValidationError.new("Invalid message JSON: #{ex.message}")
     end
 
+    # Parses a message from pre-parsed JSON data.
+    #
+    # Raises `ValidationError` when JSON is not an object, required fields are
+    # missing, fields are invalid, or values fail validation.
     def self.from_json(value : JSON::Any) : self
       object = value.as_h?
       raise ValidationError.new("Message JSON must be an object") unless object

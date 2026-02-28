@@ -1,13 +1,16 @@
 require "http/client"
 
 module WebPush
+  # Sends Web Push requests and maps provider responses into coarse result states.
   class Client
+    # High-level outcome for an attempted send based on HTTP status.
     enum SendState
       Success
       Retryable
       InvalidSubscription
     end
 
+    # HTTP response metadata returned from `Client#send`.
     struct SendResult
       getter state : SendState
       getter status_code : Int32
@@ -17,9 +20,20 @@ module WebPush
       end
     end
 
+    # Creates a client bound to a single VAPID configuration.
     def initialize(@vapid_config : VapidConfig)
     end
 
+    # Sends a push request for a subscription.
+    #
+    # Returns a `SendResult` for HTTP responses:
+    # - `Success` for `2xx`
+    # - `InvalidSubscription` for `404` / `410`
+    # - `Retryable` for all other non-`2xx`
+    #
+    # Raises `ValidationError` for invalid request inputs.
+    # Network/transport errors from `HTTP::Client.exec` are not swallowed and
+    # are raised to the caller.
     def send(subscription : Subscription, payload : String, *, ttl : Int32, expires_at : Time = Time.utc + Vapid::DEFAULT_EXPIRATION, now : Time = Time.utc) : SendResult
       request = RequestBuilder.push(subscription, @vapid_config, payload, ttl: ttl, expires_at: expires_at, now: now)
       response = send_request(request)
